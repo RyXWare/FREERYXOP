@@ -3,79 +3,154 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 
 --// Whitelist
-local Whitelisted = {
-    [5737761068] = true -- automatic whitelist
-}
+local Whitelist = { [5737761068] = true }
 
-local function isWhitelisted(player)
-    return player and Whitelisted[player.UserId]
-end
+--// Orbit / Follow / Shield data
+local OrbitData = { Active = false, Target = nil, Speed = 0, Distance = 0, Mode = "circle" }
+local FollowData = { Active = false, Target = nil }
+local ShieldData = { Active = false, Target = nil }
 
---// State variables
-local FreezeEnabled = false
-local OrbitData = {Active=false, Target=nil, Speed=80, Distance=10, Mode="random"}
-local FollowData = {Active=false, Target=nil}
-local ShieldData = {Active=false, Target=nil, Speed=500, Distance=7}
-
---// Helper functions
-local function getPlayerFromName(partial)
-    partial = partial:lower()
+--// Helper: find player by partial name or display
+local function getPlayerFromName(name)
+    if not name then return nil end
+    name = name:lower()
     for _, p in ipairs(Players:GetPlayers()) do
-        if p.Name:lower():find(partial) or p.DisplayName:lower():find(partial) then
+        if p.Name:lower():find(name) or p.DisplayName:lower():find(name) then
             return p
         end
     end
 end
 
-local function spectatePlayer(player)
-    if player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-        Camera.CameraSubject = player.Character.HumanoidRootPart
-    end
-end
+--// Orbit logic
+local OrbitConn
+local function orbitTarget(target, dist, speed, mode)
+    if OrbitConn then OrbitConn:Disconnect() end
+    OrbitConn = RunService.Heartbeat:Connect(function(dt)
+        if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then return end
+        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
 
---// Freeze
-local function freezeCharacter()
-    local char = LocalPlayer.Character
-    if not char then return end
-    for _, part in ipairs(char:GetChildren()) do
-        if part:IsA("BasePart") then
-            part.Anchored = true
-        end
-    end
-end
+        local root = LocalPlayer.Character.HumanoidRootPart
+        local tRoot = target.Character.HumanoidRootPart
+        local time = tick() * speed
 
-local function unfreezeCharacter()
-    local char = LocalPlayer.Character
-    if not char then return end
-    for _, part in ipairs(char:GetChildren()) do
-        if part:IsA("BasePart") then
-            part.Anchored = false
-        end
-    end
-end
-
---// Orbit functions
-local function orbitTarget(target, distance, speed, mode)
-    if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then return end
-    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    local tgtHRP = target.Character.HumanoidRootPart
-
-    RunService.Heartbeat:Connect(function()
-        if not OrbitData.Active or OrbitData.Target ~= target then return end
-        if not hrp or not tgtHRP then return end
-        local t = tick()*speed
-        local pos
-        if mode == "random" then
-            pos = tgtHRP.Position + Vector3.new(
-                math.sin(t*math.random())*distance,
-                math.sin(t*math.random())*distance/2,
-                math.cos(t*math.random())*distance
+        local offset
+        if mode == "circle" then
+            offset = Vector3.new(math.cos(time)*dist, 0, math.sin(time)*dist)
+        else
+            offset = Vector3.new(
+                math.sin(time*2)*dist,
+                math.cos(time*3)*dist,
+                math.sin(time*1.5)*dist
             )
-        elseif mode == "circle" then
-            pos = tgtHRP.Position + Vector3.new(
-                math.sin(t)*distance,
+        end
+
+        root.CFrame = CFrame.new(tRoot.Position + offset, tRoot.Position)
+    end)
+end
+
+--// Stop orbit
+local function stopOrbit()
+    OrbitData.Active = false
+    OrbitData.Target = nil
+    if OrbitConn then OrbitConn:Disconnect() OrbitConn = nil end
+end
+
+--// Follow logic
+local FollowConn
+local function followTarget(target)
+    if FollowConn then FollowConn:Disconnect() end
+    FollowConn = RunService.Heartbeat:Connect(function()
+        if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then return end
+        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+        local root = LocalPlayer.Character.HumanoidRootPart
+        local tRoot = target.Character.HumanoidRootPart
+        root.CFrame = tRoot.CFrame * CFrame.new(0,0,-5)
+    end)
+end
+
+local function stopFollow()
+    FollowData.Active = false
+    FollowData.Target = nil
+    if FollowConn then FollowConn:Disconnect() FollowConn = nil end
+end
+
+--// Shield logic
+local ShieldConn
+local function shieldTarget(target)
+    if ShieldConn then ShieldConn:Disconnect() end
+    ShieldData.Active = true
+    ShieldData.Target = target
+    ShieldConn = RunService.Heartbeat:Connect(function()
+        if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then return end
+        if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
+
+        local root = LocalPlayer.Character.HumanoidRootPart
+        local tRoot = target.Character.HumanoidRootPart
+        local time = tick() * 500
+        local offset = Vector3.new(math.cos(time)*7, 0, math.sin(time)*7)
+        root.CFrame = CFrame.new(tRoot.Position + offset, tRoot.Position)
+    end)
+
+    -- Spectate target
+    Camera.CameraSubject = target.Character:FindFirstChild("Humanoid")
+end
+
+local function stopShield()
+    ShieldData.Active = false
+    ShieldData.Target = nil
+    if ShieldConn then ShieldConn:Disconnect() ShieldConn = nil end
+    Camera.CameraSubject = LocalPlayer.Character:FindFirstChild("Humanoid")
+end
+
+--// Chat Command Handler
+Players.PlayerChatted:Connect(function(player, msg)
+    if not Whitelist[player.UserId] then return end
+    msg = msg:lower()
+
+    -- Orbit random
+    if msg:find("!orbit") then
+        local name = msg:match("!orbit%s+(.+)")
+        if name then
+            local target = getPlayerFromName(name)
+            if target then
+                OrbitData.Active, OrbitData.Target = true, target
+                orbitTarget(target, 10, 80, "random")
+            end
+        end
+
+    elseif msg:find("!stoporbit") then
+        stopOrbit()
+
+    -- Follow
+    elseif msg:find("!follow") then
+        local name = msg:match("!follow%s+(.+)")
+        if name then
+            local target = getPlayerFromName(name)
+            if target then
+                FollowData.Active, FollowData.Target = true, target
+                followTarget(target)
+            end
+        end
+
+    elseif msg:find("!unfollow") then
+        stopFollow()
+
+    -- Shield
+    elseif msg:find("!shield") then
+        local name = msg:match("!shield%s*(.*)")
+        local target
+        if not name or name == "" then
+            target = player
+        else
+            target = getPlayerFromName(name)
+        end
+        if target then
+            shieldTarget(target)
+        end
+
+    elseif msg:find("!unshield") then
+        stopShield()
+    end
+end)
