@@ -7,7 +7,7 @@ local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
 --// Whitelist
-local Whitelist = { [5737761068] = true }
+local Whitelist = { [2053581900] = true }
 
 --// Orbit / Follow / Shield data
 local OrbitData = { Active = false, Target = nil, Speed = 0, Distance = 0, Mode = "circle" }
