@@ -1,0 +1,81 @@
+--// Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+--// Whitelist
+local Whitelisted = {
+    [5737761068] = true -- automatic whitelist
+}
+
+local function isWhitelisted(player)
+    return player and Whitelisted[player.UserId]
+end
+
+--// State variables
+local FreezeEnabled = false
+local OrbitData = {Active=false, Target=nil, Speed=80, Distance=10, Mode="random"}
+local FollowData = {Active=false, Target=nil}
+local ShieldData = {Active=false, Target=nil, Speed=500, Distance=7}
+
+--// Helper functions
+local function getPlayerFromName(partial)
+    partial = partial:lower()
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Name:lower():find(partial) or p.DisplayName:lower():find(partial) then
+            return p
+        end
+    end
+end
+
+local function spectatePlayer(player)
+    if player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+        Camera.CameraSubject = player.Character.HumanoidRootPart
+    end
+end
+
+--// Freeze
+local function freezeCharacter()
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, part in ipairs(char:GetChildren()) do
+        if part:IsA("BasePart") then
+            part.Anchored = true
+        end
+    end
+end
+
+local function unfreezeCharacter()
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, part in ipairs(char:GetChildren()) do
+        if part:IsA("BasePart") then
+            part.Anchored = false
+        end
+    end
+end
+
+--// Orbit functions
+local function orbitTarget(target, distance, speed, mode)
+    if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then return end
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    local tgtHRP = target.Character.HumanoidRootPart
+
+    RunService.Heartbeat:Connect(function()
+        if not OrbitData.Active or OrbitData.Target ~= target then return end
+        if not hrp or not tgtHRP then return end
+        local t = tick()*speed
+        local pos
+        if mode == "random" then
+            pos = tgtHRP.Position + Vector3.new(
+                math.sin(t*math.random())*distance,
+                math.sin(t*math.random())*distance/2,
+                math.cos(t*math.random())*distance
+            )
+        elseif mode == "circle" then
+            pos = tgtHRP.Position + Vector3.new(
+                math.sin(t)*distance,
